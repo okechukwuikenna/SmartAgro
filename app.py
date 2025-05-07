@@ -1,17 +1,26 @@
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import pickle
+from sklearn.ensemble import RandomForestClassifier
 
 st.set_page_config(layout="wide", page_title="Farmer Credit Assessment")
 
 @st.cache_resource
-def load_model():
-    with open("models/credit_model.pkl", "rb") as f:
-        return pickle.load(f)
+def train_model():
+    data = {
+        "avg_yield": [3.2, 2.5, 2.9, 3.5],
+        "loan_repayment": [92, 75, 85, 98],
+        "credit_score": [720, 590, 660, 750],
+        "eligible": [1, 0, 1, 1]
+    }
+    df = pd.DataFrame(data)
+    X = df[["avg_yield", "loan_repayment", "credit_score"]]
+    y = df["eligible"]
+    model = RandomForestClassifier()
+    model.fit(X, y)
+    return model
 
-model = load_model()
+model = train_model()
 
 st.title("🧑‍🌾 Farmer Credit Assessment Dashboard")
 
@@ -32,7 +41,7 @@ if st.sidebar.button("Predict Creditworthiness"):
     pred_text = "✅ Eligible for Loan" if prediction == 1 else "❌ Not Eligible"
     st.sidebar.success(pred_text)
 
-# Dummy dashboard visuals
+# Dashboard visuals
 col1, col2 = st.columns(2)
 
 with col1:
@@ -52,3 +61,4 @@ with col2:
     })
     fig2 = px.line(df, x="Repayment Rate", y="Eligible", markers=True)
     st.plotly_chart(fig2, use_container_width=True)
+
