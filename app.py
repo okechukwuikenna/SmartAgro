@@ -1,64 +1,97 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
+import math
 from sklearn.ensemble import RandomForestClassifier
 
-st.set_page_config(layout="wide", page_title="Farmer Credit Assessment")
+# Configure the page
+st.set_page_config(
+    page_title="Agro Lender Dashboard",
+    page_icon="🌾",
+    layout="wide"
+)
 
+# --------------------------------------------------------------------
+# Load mock farmer credit data
+@st.cache_data
+def load_farmer_data():
+    return pd.DataFrame({
+        "Farmer ID": ["F001", "F002", "F003", "F004", "F005", "F006"],
+        "Location": ["North", "South", "East", "West", "North", "East"],
+        "Avg Yield (t/ha)": [3.5, 2.8, 3.1, 1.9, 4.0, 2.2],
+        "Credit Score": [710, 620, 680, 540, 760, 600],
+        "Loan Repayment %": [92, 78, 85, 63, 97, 74],
+        "Year": [2021, 2021, 2021, 2021, 2021, 2021],
+        "Eligible": [1, 0, 1, 0, 1, 0]
+    })
+
+farmer_df = load_farmer_data()
+
+# --------------------------------------------------------------------
+# ML Model (trained on-the-fly)
 @st.cache_resource
-def train_model():
-    data = {
-        "avg_yield": [3.2, 2.5, 2.9, 3.5],
-        "loan_repayment": [92, 75, 85, 98],
-        "credit_score": [720, 590, 660, 750],
-        "eligible": [1, 0, 1, 1]
-    }
-    df = pd.DataFrame(data)
-    X = df[["avg_yield", "loan_repayment", "credit_score"]]
-    y = df["eligible"]
+def train_model(df):
+    X = df[["Avg Yield (t/ha)", "Credit Score", "Loan Repayment %"]]
+    y = df["Eligible"]
     model = RandomForestClassifier()
     model.fit(X, y)
     return model
 
-model = train_model()
+model = train_model(farmer_df)
 
-st.title("🧑‍🌾 Farmer Credit Assessment Dashboard")
+# --------------------------------------------------------------------
+# Page Content
+st.title("🌾 Agro Creditworthiness Dashboard")
 
-# Sidebar inputs
-st.sidebar.header("Enter Farmer Data")
-avg_yield = st.sidebar.slider("Average Yield (tons/hectare)", 1.0, 10.0, 3.5)
-loan_repayment = st.sidebar.slider("Past Loan Repayment (%)", 0, 100, 85)
-credit_score = st.sidebar.slider("Credit Score", 300, 850, 650)
+st.markdown("""
+View farmer credit data interactively. You can filter by region, adjust input values, and predict loan eligibility on-the-fly.
+""")
 
-input_df = pd.DataFrame({
-    "avg_yield": [avg_yield],
-    "loan_repayment": [loan_repayment],
-    "credit_score": [credit_score]
-})
+# Sidebar filters
+st.sidebar.header("🧮 Predict Farmer Eligibility")
 
-if st.sidebar.button("Predict Creditworthiness"):
-    prediction = model.predict(input_df)[0]
-    pred_text = "✅ Eligible for Loan" if prediction == 1 else "❌ Not Eligible"
-    st.sidebar.success(pred_text)
+with st.sidebar:
+    avg_yield = st.slider("Average Yield (t/ha)", 1.0, 6.0, 3.0)
+    credit_score = st.slider("Credit Score", 300, 850, 650)
+    loan_repayment = st.slider("Loan Repayment %", 0, 100, 80)
 
-# Dashboard visuals
-col1, col2 = st.columns(2)
+    user_input = pd.DataFrame([{
+        "Avg Yield (t/ha)": avg_yield,
+        "Credit Score": credit_score,
+        "Loan Repayment %": loan_repayment
+    }])
 
-with col1:
-    st.subheader("Farmers by Credit Score Bracket")
-    df = pd.DataFrame({
-        "Credit Bracket": ["300-500", "501-650", "651-750", "751-850"],
-        "Farmers": [50, 120, 80, 30]
-    })
-    fig = px.bar(df, x="Credit Bracket", y="Farmers", color="Credit Bracket")
-    st.plotly_chart(fig, use_container_width=True)
+    if st.button("Predict"):
+        result = model.predict(user_input)[0]
+        result_text = "✅ Eligible" if result == 1 else "❌ Not Eligible"
+        st.success(f"Prediction: **{result_text}**")
 
-with col2:
-    st.subheader("Loan Repayment Rate vs Eligibility")
-    df = pd.DataFrame({
-        "Repayment Rate": [60, 70, 80, 90, 100],
-        "Eligible": [20, 40, 60, 80, 100]
-    })
-    fig2 = px.line(df, x="Repayment Rate", y="Eligible", markers=True)
-    st.plotly_chart(fig2, use_container_width=True)
+# Region filter
+locations = sorted(farmer_df["Location"].unique())
+selected_locations = st.multiselect("Select region(s)", locations, default=locations)
 
+filtered_df = farmer_df[farmer_df["Location"].isin(selected_locations)]
+
+# --------------------------------------------------------------------
+# Charts
+st.header("📈 Credit Score by Region", divider='gray')
+
+region_chart = filtered_df.groupby("Location")["Credit Score"].mean().reset_index()
+st.bar_chart(region_chart.set_index("Location"))
+
+st.header("📊 Farmer Creditworthiness Table", divider='gray')
+st.dataframe(filtered_df, use_container_width=True)
+
+# --------------------------------------------------------------------
+# Farmer performance metrics
+st.header("📌 Key Metrics", divider='gray')
+
+cols = st.columns(3)
+for i, row in filtered_df.iterrows():
+    col = cols[i % 3]
+    with col:
+        st.metric(
+            label=f"Farmer {row['Farmer ID']}",
+            value=f"{row['Credit Score']}",
+            delta=f"{row['Loan Repayment %']}% Repayment",
+            delta_color="normal" if row['Eligible'] else "inverse"
+        )
